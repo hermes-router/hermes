@@ -21,6 +21,8 @@ You can perform these steps by copying the commands listed below into a bash she
     sudo adduser hermes
     ssh hermes@localhost
     git clone https://github.com/hermes-router/hermes.git
+    cd hermes
+    git checkout stable-v0.1  
     cd ~/hermes/installation
     ./install.sh
     exit
@@ -182,7 +184,7 @@ Redash provides a convenient installation script that uses Docker for the Redash
 
 ::
 
-    wget https://raw.githubusercontent.com/getredash/redash/master/setup/setup.sh
+    wget https://raw.githubusercontent.com/getredash/setup/master/setup.sh
     chmod 700 setup.sh
     sudo ./setup.sh
 
