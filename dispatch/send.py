@@ -36,17 +36,17 @@ DCMSEND_ERROR_CODES = {
 
 def _create_command(target_info, folder):
     """Composes the command for calling the dcmsend tool from DCMTK, which is used for sending out the DICOMS."""
-    target_ip         = target_info.get("dispatch",{}).get("target_ip","")
-    target_port       = target_info.get("dispatch",{}).get("target_port","")
-    target_aet_target = target_info.get("dispatch",{}).get("target_aet_target","")
-    target_aet_source = target_info.get("dispatch",{}).get("target_aet_source","")
+    target_ip         = target_info.get("target_ip","")
+    target_port       = target_info.get("target_port","")
+    target_aet_target = target_info.get("target_aet_target","")
+    target_aet_source = target_info.get("target_aet_source","")
     
     dcmsend_status_file = Path(folder) / mercure_names.SENDLOG
 
     command = f"""dcmsend {target_ip} {target_port} +sd {folder}
             -aet {target_aet_source} -aec {target_aet_target} -nuc
             +sp '*.dcm' -to 60 +crf {dcmsend_status_file}"""
-    
+    logger.debug(command) 
     return command
 
 
@@ -65,7 +65,7 @@ def execute(
     """
     target_info = is_ready_for_sending(source_folder)
     delay = target_info.get("next_retry_at", 0)
-
+    logger.info(f"Target Info: {target_info}")
     if target_info and time.time() >= delay:
         logger.info(f"Folder {source_folder} is ready for sending")
 

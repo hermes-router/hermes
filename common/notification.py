@@ -18,7 +18,7 @@ logger = daiquiri.getLogger("notification")
 
 
 def send_webhook(url, payload, event):
-    if (url==False):
+    if not url:
         return
 
     # TODO: Replace macros in payload

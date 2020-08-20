@@ -337,7 +337,7 @@ def push_serieslevel_outgoing(triggered_rules,file_list,series_UID,tags_list,sel
             return
 
         try:
-            lock_file=Path(folder_name / mercure_names.LOCK)
+            lock_file=Path(folder_name + "/" + mercure_names.LOCK)
             lock=helper.FileLock(lock_file)
         except:
             # Can't create lock file, so something must be seriously wrong
