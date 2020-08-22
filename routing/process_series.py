@@ -148,7 +148,7 @@ def push_series_discard(fileList,series_UID):
     # Create lock file in destination folder (to prevent the cleaner module to work on the folder). Note that 
     # the DICOM series in the incoming folder has already been locked in the parent function.
     try:
-        lock_file=Path(discard_path + '/lock')
+        lock_file=Path(discard_path + '/.lock')
         lock=FileLock(lock_file)
     except:
         # Can't create lock file, so something must be seriously wrong
@@ -217,7 +217,7 @@ def push_series_outgoing(fileList,series_UID,transfer_targets):
             return
 
         try:
-            lock_file=Path(folder_name + '/lock')
+            lock_file=Path(folder_name + '/.lock')
             lock=FileLock(lock_file)
         except:
             # Can't create lock file, so something must be seriously wrong
