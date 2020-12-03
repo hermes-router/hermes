@@ -45,7 +45,7 @@ def _create_command(target_info, folder):
     return command
 
 
-def execute(
+def execute(target_info,
     source_folder: Path,
     success_folder: Path,
     error_folder: Path,
@@ -53,67 +53,41 @@ def execute(
     retry_delay,
 ):
     """
-    Execute the dcmsend command. It will create a .sending file to indicate that
-    the folder is being sent. This is to prevent double sending. If there
-    happens any error the .lock file is deleted and an .error file is created.
-    Folder with .error files are _not_ ready for sending.
+    Execute the dcmsend command. If there happens any error the .lock file is 
+    deleted and an .error file is created. Folder with .error files are 
+    _not_ ready for sending.
     """
-    target_info = is_ready_for_sending(source_folder)
-    delay = target_info.get("next_retry_at", 0)
-
-    if target_info and time.time() >= delay:
-        logger.info(f"Folder {source_folder} is ready for sending")
-
-        series_uid=target_info.get("series_uid", "series_uid-missing") 
-        target_name=target_info.get("target_name", "target_name-missing")
-
-        if (series_uid=="series_uid-missing") or (target_name=="target_name-missing"):
-            send_event(h_events.PROCESSING, severity.WARNING, f"Missing information for folder {source_folder}")    
-
-        # Create a .sending file to indicate that this folder is being sent,
-        # otherwise the dispatcher would pick it up again if the transfer is
-        # still going on
-        lock_file = Path(source_folder) / ".sending"
-        lock_file.touch()
-
-        command = _create_command(target_info, source_folder)
-        logger.debug(f"Running command {command}")
-        try:
-            run(split(command), check=True)
-            logger.info(
-                f"Folder {source_folder} successfully sent, moving to {success_folder}"
-            )
-            # Send bookkeeper notification
-            file_count = len(list(Path(source_folder).glob("*.dcm")))
-            send_series_event(
-                s_events.DISPATCH,
-                target_info.get("series_uid", "series_uid-missing"),
-                file_count,
-                target_info.get("target_name", "target_name-missing"),
-                "",
-            )
-            _move_sent_directory(source_folder, success_folder)
-            send_series_event(s_events.MOVE, series_uid, 0, success_folder, "")
-        except CalledProcessError as e:
-            dcmsend_error_message = DCMSEND_ERROR_CODES.get(e.returncode, None)
-            logger.exception(
-                f"Failed command:\n {command} \nbecause of {dcmsend_error_message}"
-            )
-            send_event(h_events.PROCESSING, severity.ERROR, f"Error sending {series_uid} to {target_name}")
-            send_series_event(s_events.ERROR, series_uid, 0, target_name, dcmsend_error_message)
-            retry_increased = increase_retry(source_folder, retry_max, retry_delay)
-            if retry_increased:
-                lock_file.unlink()
-            else:
-                logger.info(f"Max retries reached, moving to {error_folder}")
-                send_series_event(s_events.SUSPEND, series_uid, 0, target_name, "Max retries reached")
-                _move_sent_directory(source_folder, error_folder)
-                send_series_event(s_events.MOVE, series_uid, 0, error_folder, "")
-                send_event(h_events.PROCESSING, severity.ERROR, f"Series suspended after reaching max retries")
+    command = _create_command(target_info, source_folder)
+    logger.debug(f"Running command {command}")
+    series_uid=target_info.get("series_uid", "series_uid-missing") 
+    target_name=target_info.get("target_name", "target_name-missing")
+    try:
+        run(split(command), check=True)
+        logger.info(
+            f"Folder {source_folder} successfully sent, moving to {success_folder}"
+        )
+        # Send bookkeeper notification
+        file_count = len(list(Path(source_folder).glob("*.dcm")))
+        send_series_event(s_events.DISPATCH, series_uid, file_count, target_name, "",)
+    except CalledProcessError as e:
+        dcmsend_error_message = DCMSEND_ERROR_CODES.get(e.returncode, None)
+        logger.exception(
+            f"Failed command:\n {command} \nbecause of {dcmsend_error_message}"
+        )
+        send_event(h_events.PROCESSING, severity.ERROR, f"Error sending {series_uid} to {target_name}")
+        send_series_event(s_events.ERROR, series_uid, 0, target_name, dcmsend_error_message)
+        retry_increased = increase_retry(source_folder, retry_max, retry_delay)
+        if retry_increased:
+            (Path(source_folder) / ".sending").unlink()
+        else:
+            logger.info(f"Max retries reached, moving to {error_folder}")
+            send_series_event(s_events.SUSPEND, series_uid, 0, target_name, "Max retries reached")
+            _move_sent_directory(source_folder, error_folder)
+            send_series_event(s_events.MOVE, series_uid, 0, error_folder, "")
+            send_event(h_events.PROCESSING, severity.ERROR, f"Series suspended after reaching max retries")
     else:
         pass
-        #logger.warning(f"Folder {source_folder} is *not* ready for sending")
-
+      
 
 def _move_sent_directory(source_folder, destination_folder):
     """
@@ -135,6 +109,7 @@ def _move_sent_directory(source_folder, destination_folder):
             )
             shutil.move(source_folder, destination_folder / source_folder.name)
             (destination_folder / source_folder.name / ".sending").unlink()
-    except:
-        logger.info(f"Error moving folder {source_folder} to {destination_folder}")        
+    except Exception as e:
+        logger.info(f"Error moving folder {source_folder} to {destination_folder}")    
+        logger.error(e)   
         send_event(h_events.PROCESSING, severity.ERROR, f"Error moving {source_folder} to {destination_folder}")

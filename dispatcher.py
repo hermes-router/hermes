@@ -7,17 +7,22 @@ import logging
 import os
 import signal
 import sys
+import time
 from pathlib import Path
+
 import daiquiri
 import graphyte
+from redis import Redis
+from rq import Queue
 
 import common.config as config
 import common.helper as helper
 import common.monitor as monitor
 import common.version as version
-from dispatch.status import has_been_send, is_ready_for_sending
-from dispatch.send import execute
-
+from common.monitor import (h_events, s_events, send_event, send_series_event,
+                            severity)
+from dispatch.send import execute, _move_sent_directory
+from dispatch.status import has_been_send, is_ready_for_sending, is_target_json_valid
 
 daiquiri.setup(
     level=logging.INFO,
@@ -74,14 +79,36 @@ def dispatch(args):
 
     with os.scandir(config.hermes["outgoing_folder"]) as it:
         for entry in it:
+            target_info = is_ready_for_sending(entry.path)
             if (
                 entry.is_dir()
                 and not has_been_send(entry.path)
-                and is_ready_for_sending(entry.path)
+                and target_info 
             ):
-                logger.info(f"Sending folder {entry.path}")
-                execute(Path(entry.path), success_folder, error_folder, retry_max, retry_delay)
 
+                delay = target_info.get("next_retry_at", 0)
+                if target_info and time.time() >= delay:
+                    series_uid=target_info.get("series_uid", "series_uid-missing") 
+                    target_name=target_info.get("target_name", "target_name-missing")
+
+                    if (series_uid=="series_uid-missing") or (target_name=="target_name-missing"):
+                        send_event(h_events.PROCESSING, severity.WARNING, f"Missing information for folder {entry.path}")    
+
+                    # Create a .sending file to indicate that this folder is being sent,
+                    # otherwise the dispatcher would pick it up again if the transfer is
+                    # still going on
+                    lock_file = Path(entry.path) / ".sending"
+                    lock_file.touch()
+                
+                    # global queue. dcm send are ofloaded to rq jobs. Workers are started from the cli.
+                    logger.info(f"Folder {entry.path} is put to queue")
+                    q.enqueue(execute, target_info, Path(entry.path), success_folder, error_folder, retry_max, retry_delay)
+            elif entry.is_dir and has_been_send(entry.path):
+                logger.info(f"Folder {entry.path} has been sent")
+                series_uid=is_target_json_valid(entry.path).get("series_uid", "series_uid-missing")
+                _move_sent_directory(Path(entry.path), success_folder)
+                send_series_event(s_events.MOVE, series_uid, 0, success_folder, "")
+                logger.info(f"Folder {entry.path} has been moved to success folder")
             # If termination is requested, stop processing series after the
             # active one has been completed
             if helper.isTerminated():
@@ -146,6 +173,9 @@ if __name__ == "__main__":
         )
 
     logger.info(f"Dispatching folder: {config.hermes['outgoing_folder']}")
+
+    global q
+    q = Queue(connection=Redis())
 
     global main_loop
     main_loop = helper.RepeatedTimer(
