@@ -4,28 +4,22 @@ bookkeeper.py
 The bookkeeper service of Hermes, which receives notifications from all Hermes services
 and stores the information in a Postgres database.
 """
-# Standard python includes
-import uvicorn
 import datetime
 import logging
 
 # 3rd party
 import daiquiri
-from starlette.applications import Starlette
-from starlette.responses import JSONResponse
-from starlette.responses import PlainTextResponse
-from starlette.responses import JSONResponse
-from starlette.responses import RedirectResponse
-from starlette.background import BackgroundTasks
-from starlette.config import Config
-from starlette.datastructures import URL, Secret
 import databases
 import sqlalchemy
- 
-# App-specific includes
-import common.monitor as monitor
-import common.version as version
+import uvicorn
+from starlette.applications import Starlette
+from starlette.background import BackgroundTasks
+from starlette.config import Config
+from starlette.responses import JSONResponse
 
+# App-specific includes
+import common.version as version
+from common.events import Hermes_Event, Series_Event, Severity, WebGui_Event
 
 ###################################################################################
 ## Configuration and initialization
@@ -68,8 +62,8 @@ hermes_events = sqlalchemy.Table(
     sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, autoincrement=True),
     sqlalchemy.Column("time", sqlalchemy.DateTime),
     sqlalchemy.Column("sender", sqlalchemy.String, default="Unknown"),
-    sqlalchemy.Column("event", sqlalchemy.String, default=monitor.h_events.UNKNOWN),
-    sqlalchemy.Column("severity", sqlalchemy.Integer, default=monitor.severity.INFO),
+    sqlalchemy.Column("event", sqlalchemy.String, default=Hermes_Event.UNKNOWN),
+    sqlalchemy.Column("severity", sqlalchemy.Integer, default=Severity.INFO),
     sqlalchemy.Column("description", sqlalchemy.String, default="")
 )
 
@@ -79,7 +73,7 @@ webgui_events = sqlalchemy.Table(
     sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, autoincrement=True),
     sqlalchemy.Column("time", sqlalchemy.DateTime),
     sqlalchemy.Column("sender", sqlalchemy.String, default="Unknown"),
-    sqlalchemy.Column("event", sqlalchemy.String, default=monitor.w_events.UNKNOWN),
+    sqlalchemy.Column("event", sqlalchemy.String, default=WebGui_Event.UNKNOWN),
     sqlalchemy.Column("user", sqlalchemy.String, default=""),
     sqlalchemy.Column("description", sqlalchemy.String, default="")
 )
@@ -207,8 +201,8 @@ async def post_hermes_event(request):
     """Endpoint for receiving Hermes system events."""
     payload     = dict(await request.form())
     sender      = payload.get("sender","Unknown")
-    event       = payload.get("event",monitor.h_events.UNKNOWN)
-    severity    = int(payload.get("severity",monitor.severity.INFO))    
+    event       = payload.get("event",Hermes_Event.UNKNOWN)
+    severity    = int(payload.get("severity",Severity.INFO))    
     description = payload.get("description","")       
 
     query = hermes_events.insert().values(
@@ -224,7 +218,7 @@ async def post_webgui_event(request):
     """Endpoint for logging relevant events of the webgui."""
     payload     = dict(await request.form())
     sender      = payload.get("sender","Unknown")
-    event       = payload.get("event",monitor.w_events.UNKNOWN)
+    event       = payload.get("event",WebGui_Event.UNKNOWN)
     user        = payload.get("user","UNKNOWN")
     description = payload.get("description","")       
 
@@ -308,7 +302,7 @@ async def post_series_event(request):
     """Endpoint for logging all events related to one series."""
     payload    = dict(await request.form())
     sender     = payload.get("sender","Unknown")
-    event      = payload.get("event",monitor.s_events.UNKNOWN)
+    event      = payload.get("event",Series_Event.UNKNOWN)
     series_uid = payload.get("series_uid","")
     file_count = payload.get("file_count",0)
     target     = payload.get("target","")

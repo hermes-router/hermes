@@ -4,6 +4,7 @@ router.py
 Hermes' central router module that evaluates the routing rules and decides which series should be sent to which target. 
 """
 # Standard python includes
+from common.events import Hermes_Event, Series_Event, Severity
 import time
 import signal
 import os
@@ -45,6 +46,8 @@ daiquiri.setup(
 )
 logger = daiquiri.getLogger("router")
 
+_monitor = None
+
 def receiveSignal(signalNumber, frame):
     """Function for testing purpose only. Should be removed."""
     logger.info(f'Received: {signalNumber}')
@@ -55,7 +58,7 @@ def terminateProcess(signalNumber, frame):
     """Triggers the shutdown of the service."""
     helper.g_log('events.shutdown', 1)
     logger.info('Shutdown requested')
-    monitor.send_event(monitor.h_events.SHUTDOWN_REQUEST, monitor.severity.INFO)
+    _monitor.send_event(Hermes_Event.SHUTDOWN_REQUEST, Severity.INFO)
     # Note: main_loop can be read here because it has been declared as global variable
     if 'main_loop' in globals() and main_loop.is_running:
         main_loop.stop()
@@ -76,7 +79,7 @@ def runRouter(args):
         config.read_config()
     except Exception:
         logger.exception("Unable to update configuration. Skipping processing.")
-        monitor.send_event(monitor.h_events.CONFIG_UPDATE,monitor.severity.WARNING,"Unable to update configuration (possibly locked)")
+        _monitor.send_event(Hermes_Event.CONFIG_UPDATE,Severity.WARNING,"Unable to update configuration (possibly locked)")
         return
 
     filecount=0
@@ -120,8 +123,8 @@ def runRouter(args):
             process_series(entry)
         except Exception:
             logger.exception(f'Problems while processing series {entry}')
-            monitor.send_series_event(monitor.s_events.ERROR, entry, 0, "", "Exception while processing")
-            monitor.send_event(monitor.h_events.PROCESSING, monitor.severity.ERROR, "Exception while processing series")
+            _monitor.send_series_event(Series_Event.ERROR, entry, 0, "", "Exception while processing")
+            _monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, "Exception while processing series")
         # If termination is requested, stop processing series after the active one has been completed
         if helper.isTerminated():
             return
@@ -174,8 +177,8 @@ if __name__ == '__main__':
         logger.exception("Cannot start service. Going down.")
         sys.exit(1)
 
-    monitor.configure('router',instance_name,config.hermes['bookkeeper'])
-    monitor.send_event(monitor.h_events.BOOT,monitor.severity.INFO,f'PID = {os.getpid()}')
+    _monitor = monitor.configure('router',instance_name,config.hermes['bookkeeper'])
+    _monitor.send_event(Hermes_Event.BOOT,Severity.INFO,f'PID = {os.getpid()}')
 
     graphite_prefix='hermes.router.'+instance_name
     if len(config.hermes['graphite_ip']) > 0:
@@ -196,5 +199,5 @@ if __name__ == '__main__':
     helper.loop.run_forever()
 
     # Process will exit here once the asyncio loop has been stopped
-    monitor.send_event(monitor.h_events.SHUTDOWN, monitor.severity.INFO)
+    _monitor.send_event(Hermes_Event.SHUTDOWN, Severity.INFO)
     logger.info('Going down now')

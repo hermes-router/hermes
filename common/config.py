@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-import common.monitor as monitor
+
 import daiquiri
 
 logger = daiquiri.getLogger("config")
@@ -78,13 +78,7 @@ def read_config():
             if not checkFolders():
                 raise FileNotFoundError("Configured folders missing")
 
-            #logger.info("")
-            #logger.info("Active configuration: ")
-            #logger.info(json.dumps(hermes, indent=4))
-            #logger.info("")
-
             configuration_timestamp=timestamp
-            monitor.send_event(monitor.h_events.CONFIG_UPDATE, monitor.severity.INFO, "Configuration updated")
             return hermes
     else:
         raise FileNotFoundError(f"Configuration file not found: {configuration_file}")
@@ -111,7 +105,6 @@ def save_config():
     except AttributeError:
         configuration_timestamp=0
 
-    monitor.send_event(monitor.h_events.CONFIG_UPDATE, monitor.severity.INFO, "Saved new configuration.")
     logger.info(f"Stored configuration into: {configuration_file}")
 
 
@@ -128,7 +121,6 @@ def write_configfile(json_content):
     with open(configuration_file, "w") as json_file:
         json.dump(json_content, json_file, indent=4)
 
-    monitor.send_event(monitor.h_events.CONFIG_UPDATE, monitor.severity.INFO, "Wrote configuration file.")
     logger.info(f"Wrote configuration into: {configuration_file}")
 
 
@@ -137,6 +129,5 @@ def checkFolders():
     for entry in ['incoming_folder','outgoing_folder','success_folder','error_folder','discard_folder']:
         if not Path(hermes[entry]).exists():
             logger.error(f"Folder not found {hermes[entry]}")
-            monitor.send_event(monitor.h_events.CONFIG_UPDATE, monitor.severity.CRITICAL, "Folders are missing")
             return False
     return True

@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 
-from common.monitor import s_events, send_series_event
-
 
 def is_ready_for_sending(folder):
     """Checks if a case in the outgoing folder is ready for sending by the dispatcher.
@@ -45,6 +43,7 @@ def is_target_json_valid(folder):
     if not all(
         [key in target for key in ["target_ip", "target_port", "target_aet_target"]]
     ):
+        """
         send_series_event(
             s_events.ERROR,
             target.get("series_uid", None),
@@ -52,5 +51,6 @@ def is_target_json_valid(folder):
             target.get("target_name", None),
             f"target.json is missing a mandatory key {target}",
         )
+        """
         return None
     return target

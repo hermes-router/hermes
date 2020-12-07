@@ -4,6 +4,7 @@ send.py
 The functions for sending DICOM series
 to target destinations.
 """
+import json
 import shutil
 import time
 from datetime import datetime
@@ -12,10 +13,7 @@ from shlex import split
 from subprocess import CalledProcessError, run
 
 import daiquiri
-
-from common.monitor import s_events, send_series_event, send_event, h_events, severity
-from dispatch.retry import increase_retry
-from dispatch.status import is_ready_for_sending
+from common.events import Hermes_Event, Series_Event, Severity
 
 logger = daiquiri.getLogger("send")
 
@@ -51,6 +49,7 @@ def execute(target_info,
     error_folder: Path,
     retry_max,
     retry_delay,
+    monitor
 ):
     """
     Execute the dcmsend command. If there happens any error the .lock file is 
@@ -68,28 +67,28 @@ def execute(target_info,
         )
         # Send bookkeeper notification
         file_count = len(list(Path(source_folder).glob("*.dcm")))
-        send_series_event(s_events.DISPATCH, series_uid, file_count, target_name, "",)
+        monitor.send_series_event(Series_Event.DISPATCH, series_uid, file_count, target_name, "",)
     except CalledProcessError as e:
         dcmsend_error_message = DCMSEND_ERROR_CODES.get(e.returncode, None)
         logger.exception(
             f"Failed command:\n {command} \nbecause of {dcmsend_error_message}"
         )
-        send_event(h_events.PROCESSING, severity.ERROR, f"Error sending {series_uid} to {target_name}")
-        send_series_event(s_events.ERROR, series_uid, 0, target_name, dcmsend_error_message)
-        retry_increased = increase_retry(source_folder, retry_max, retry_delay)
+        monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Error sending {series_uid} to {target_name}")
+        monitor.send_series_event(Series_Event.ERROR, series_uid, 0, target_name, dcmsend_error_message)
+        retry_increased = _increase_retry(source_folder, retry_max, retry_delay)
         if retry_increased:
             (Path(source_folder) / ".sending").unlink()
         else:
             logger.info(f"Max retries reached, moving to {error_folder}")
-            send_series_event(s_events.SUSPEND, series_uid, 0, target_name, "Max retries reached")
-            _move_sent_directory(source_folder, error_folder)
-            send_series_event(s_events.MOVE, series_uid, 0, error_folder, "")
-            send_event(h_events.PROCESSING, severity.ERROR, f"Series suspended after reaching max retries")
+            monitor.send_series_event(Series_Event.SUSPEND, series_uid, 0, target_name, "Max retries reached")
+            _move_sent_directory(source_folder, error_folder, monitor)
+            monitor.send_series_event(Series_Event.MOVE, series_uid, 0, error_folder, "")
+            monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Series suspended after reaching max retries")
     else:
         pass
       
 
-def _move_sent_directory(source_folder, destination_folder):
+def _move_sent_directory(source_folder, destination_folder, monitor):
     """
     This check is needed if there is already a folder with the same name
     in the success folder. If so a new directory is create with a timestamp
@@ -112,4 +111,25 @@ def _move_sent_directory(source_folder, destination_folder):
     except Exception as e:
         logger.info(f"Error moving folder {source_folder} to {destination_folder}")    
         logger.error(e)   
-        send_event(h_events.PROCESSING, severity.ERROR, f"Error moving {source_folder} to {destination_folder}")
+        monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Error moving {source_folder} to {destination_folder}")
+
+
+def _increase_retry(source_folder, retry_max, retry_delay):
+    """ Increases the retries counter and set the wait counter to a new time
+    in the future.
+    :return True if increase has been successful or False if maximum retries
+    has been reached
+    """
+    target_json_path = Path(source_folder) / "target.json"
+    with open(target_json_path, "r") as file:
+        target_json = json.load(file)
+
+    target_json["retries"] = target_json.get("retries", 0) + 1
+    target_json["next_retry_at"] = time.time() + retry_delay
+
+    if target_json["retries"] >= retry_max:
+        return False
+
+    with open(target_json_path, "w") as file:
+        json.dump(target_json, file)
+    return True

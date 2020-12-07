@@ -3,6 +3,7 @@ test_cleaner.py
 ===============
 """
 from datetime import datetime
+import pytest
 
 import cleaner as c
 
@@ -32,11 +33,11 @@ def test_other_input_offpeak():
 
 
 def test_wrong_start_input_offpeak():
-    is_ = c._is_offpeak("asdf", "6:00", _to_time("5:00"))
-    assert is_
-
+    with pytest.raises(Exception) as e:
+        c._is_offpeak("asdf", "6:00", _to_time("05:00"))
+    
 
 def test_wrong_end_input_offpeak():
-    is_ = c._is_offpeak("22:00", "asdf", _to_time("5:00"))
-    assert is_
-
+    with pytest.raises(Exception) as e:
+        c._is_offpeak("22:00", "asdf", _to_time("5:00"))
+    

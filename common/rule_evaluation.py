@@ -48,7 +48,7 @@ def parse_rule(rule,tags):
     except Exception as e: 
         logger.error(f"ERROR: {e}")
         logger.warn(f"WARNING: Invalid rule expression {rule}",'"'+rule+'"')
-        monitor.send_event(monitor.h_events.CONFIG_UPDATE,monitor.severity.ERROR,f"Invalid rule encountered {rule}")
+        monitor.send_event(Hermes_Event.CONFIG_UPDATE,Severity.ERROR,f"Invalid rule encountered {rule}")
         return False
 
 
@@ -69,16 +69,3 @@ def test_rule(rule,tags):
             return "False"
     except Exception as e: 
         return str(e)    
-
-
-#if __name__ == "__main__":
-#    tags = { "Tag1": "One", "TestTag": "Two", "AnotherTag": "Three" }
-#    result = "('Tr' in @Tag1@) | (@Tag1@ == 'Trio') @Three@ @AnotherTag@"
-#    parsed=replace_tags(result,tags)
-#    print(result)
-#    print(parsed)
-
-    #result=parse_rule(sys.argv[1],{ "ManufacturerModelName": "Trio" })
-    #sys.exit(result)
-
-# Example: "('Tr' in @ManufacturerModelName@) | (@ManufacturerModelName@ == 'Trio')"

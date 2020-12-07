@@ -6,6 +6,7 @@ retention time has passed and if it is offpeak time. Offpeak is the time
 period when the cleaning has to be done, because cleaning I/O should be kept
 to minimum when receiving and sending exams.
 """
+from common.events import Hermes_Event, Series_Event, Severity
 import logging
 import os
 import signal
@@ -21,8 +22,7 @@ import common.config as config
 import common.helper as helper
 import common.monitor as monitor
 import common.version as version
-from common.monitor import send_series_event
-from common.monitor import s_events
+
 
 
 daiquiri.setup(
@@ -37,6 +37,7 @@ daiquiri.setup(
 )
 logger = daiquiri.getLogger("cleaner")
 
+_monitor = None
 
 def receiveSignal(signalNumber, frame):
     """Function for testing purpose only. Should be removed."""
@@ -48,7 +49,7 @@ def terminateProcess(signalNumber, frame):
     """Triggers the shutdown of the service."""
     helper.g_log("events.shutdown", 1)
     logger.info("Shutdown requested")
-    monitor.send_event(monitor.h_events.SHUTDOWN_REQUEST, monitor.severity.INFO)
+    _monitor.send_event(Hermes_Event.SHUTDOWN_REQUEST, Severity.INFO)
     # Note: main_loop can be read here because it has been declared as global variable
     if "main_loop" in globals() and main_loop.is_running:
         main_loop.stop()
@@ -66,9 +67,9 @@ def clean(args):
         config.read_config()
     except Exception:
         logger.exception("Unable to read configuration. Skipping processing.")
-        monitor.send_event(
-            monitor.h_events.CONFIG_UPDATE,
-            monitor.severity.WARNING,
+        _monitor.send_event(
+            Hermes_Event.CONFIG_UPDATE,
+            Severity.WARNING,
             "Unable to read configuration (possibly locked)",
         )
         return
@@ -93,7 +94,7 @@ def _is_offpeak(offpeak_start, offpeak_end, current_time):
         end_time = datetime.strptime(offpeak_end, "%H:%M").time()
     except ValueError as e:
         logger.error("Error parsing offpeak time, please check configuration", e)
-        return True
+        raise ValueError(e)
 
     if start_time < end_time:
         return current_time >= start_time and current_time <= end_time
@@ -124,16 +125,16 @@ def delete_folder(entry):
     try:
         rmtree(delete_path)
         logger.info(f"Deleted folder {delete_path} from {series_uid}")
-        send_series_event(s_events.CLEAN, series_uid, 0, delete_path, "Deleted folder")
+        _monitor.send_series_event(Series_Event.CLEAN, series_uid, 0, delete_path, "Deleted folder")
     except Exception as e:
         logger.info(f"Unable to delete folder {delete_path}")
         logger.exception(e)
-        send_series_event(
-            s_events.ERROR, series_uid, 0, delete_path, "Unable to delete folder"
+        _monitor.send_series_event(
+            Series_Event.ERROR, series_uid, 0, delete_path, "Unable to delete folder"
         )
-        monitor.send_event(
-            monitor.h_events.PROCESSING,
-            monitor.severity.ERROR,
+        _monitor.send_event(
+            Hermes_Event.PROCESSING,
+            Severity.ERROR,
             f"Unable to delete folder {delete_path}",
         )
 
@@ -190,9 +191,9 @@ if __name__ == "__main__":
         logger.exception("Cannot start service. Going down.")
         sys.exit(1)
 
-    monitor.configure("cleaner", instance_name, config.hermes["bookkeeper"])
-    monitor.send_event(
-        monitor.h_events.BOOT, monitor.severity.INFO, f"PID = {os.getpid()}"
+    _monitor = monitor.configure("cleaner", instance_name, config.hermes["bookkeeper"])
+    _monitor.send_event(
+        Hermes_Event.BOOT, Severity.INFO, f"PID = {os.getpid()}"
     )
 
     graphite_prefix = "hermes.cleaner." + instance_name
@@ -219,5 +220,5 @@ if __name__ == "__main__":
     helper.loop.run_forever()
 
     # Process will exit here once the asyncio loop has been stopped
-    monitor.send_event(monitor.h_events.SHUTDOWN, monitor.severity.INFO)
+    _monitor.send_event(Hermes_Event.SHUTDOWN, Severity.INFO)
     logger.info("Going down now")

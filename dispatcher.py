@@ -3,6 +3,7 @@ dispatcher.py
 =============
 The dispatcher service of Hermes that executes the DICOM transfer to the different targets.
 """
+from common.events import Hermes_Event, Series_Event, Severity
 import logging
 import os
 import signal
@@ -19,10 +20,10 @@ import common.config as config
 import common.helper as helper
 import common.monitor as monitor
 import common.version as version
-from common.monitor import (h_events, s_events, send_event, send_series_event,
-                            severity)
-from dispatch.send import execute, _move_sent_directory
-from dispatch.status import has_been_send, is_ready_for_sending, is_target_json_valid
+
+from dispatch.send import _move_sent_directory, execute
+from dispatch.status import (has_been_send, is_ready_for_sending,
+                             is_target_json_valid)
 
 daiquiri.setup(
     level=logging.INFO,
@@ -37,6 +38,9 @@ daiquiri.setup(
 logger = daiquiri.getLogger("dispatcher")
 
 
+_monitor = None
+_q = None
+
 def receiveSignal(signalNumber, frame):
     """Function for testing purpose only. Should be removed."""
     logger.info("Received:", signalNumber)
@@ -47,7 +51,7 @@ def terminateProcess(signalNumber, frame):
     """Triggers the shutdown of the service."""
     helper.g_log('events.shutdown', 1)
     logger.info("Shutdown requested")
-    monitor.send_event(monitor.h_events.SHUTDOWN_REQUEST, monitor.severity.INFO)
+    _monitor.send_event(Hermes_Event.SHUTDOWN_REQUEST, Severity.INFO)
     # Note: main_loop can be read here because it has been declared as global variable
     if 'main_loop' in globals() and main_loop.is_running:
         main_loop.stop()
@@ -65,9 +69,9 @@ def dispatch(args):
         config.read_config()
     except Exception:
         logger.exception("Unable to read configuration. Skipping processing.")
-        monitor.send_event(
-            monitor.h_events.CONFIG_UPDATE,
-            monitor.severity.WARNING,
+        _monitor.send_event(
+            Hermes_Event.CONFIG_UPDATE,
+            Severity.WARNING,
             "Unable to read configuration (possibly locked)",
         )
         return
@@ -92,7 +96,7 @@ def dispatch(args):
                     target_name=target_info.get("target_name", "target_name-missing")
 
                     if (series_uid=="series_uid-missing") or (target_name=="target_name-missing"):
-                        send_event(h_events.PROCESSING, severity.WARNING, f"Missing information for folder {entry.path}")    
+                        _monitor.send_event(Hermes_Event.PROCESSING, Severity.WARNING, f"Missing information for folder {entry.path}")    
 
                     # Create a .sending file to indicate that this folder is being sent,
                     # otherwise the dispatcher would pick it up again if the transfer is
@@ -102,12 +106,12 @@ def dispatch(args):
                 
                     # global queue. dcm send are ofloaded to rq jobs. Workers are started from the cli.
                     logger.info(f"Folder {entry.path} is put to queue")
-                    q.enqueue(execute, target_info, Path(entry.path), success_folder, error_folder, retry_max, retry_delay)
+                    _q.enqueue(execute, target_info, Path(entry.path), success_folder, error_folder, retry_max, retry_delay, _monitor)
             elif entry.is_dir and has_been_send(entry.path):
                 logger.info(f"Folder {entry.path} has been sent")
                 series_uid=is_target_json_valid(entry.path).get("series_uid", "series_uid-missing")
-                _move_sent_directory(Path(entry.path), success_folder)
-                send_series_event(s_events.MOVE, series_uid, 0, success_folder, "")
+                _move_sent_directory(Path(entry.path), success_folder, _monitor)
+                _monitor.send_series_event(Series_Event.MOVE, series_uid, 0, success_folder, "")
                 logger.info(f"Folder {entry.path} has been moved to success folder")
             # If termination is requested, stop processing series after the
             # active one has been completed
@@ -151,21 +155,17 @@ if __name__ == "__main__":
 
     try:
         config.read_config()
+        _monitor = monitor.configure("dispatcher", instance_name, config.hermes["bookkeeper"])
     except Exception:
         logger.exception("Cannot start service. Going down.")
         sys.exit(1)
 
-    monitor.configure("dispatcher", instance_name, config.hermes["bookkeeper"])
-    monitor.send_event(
-        monitor.h_events.BOOT, monitor.severity.INFO, f"PID = {os.getpid()}"
-    )
-
+    
+    _monitor.send_event(Hermes_Event.BOOT, Severity.INFO, f"PID = {os.getpid()}")
     graphite_prefix = "hermes.dispatcher." + instance_name
 
     if len(config.hermes["graphite_ip"]) > 0:
-        logging.info(
-            f'Sending events to graphite server: {config.hermes["graphite_ip"]}'
-        )
+        logging.info(f'Sending events to graphite server: {config.hermes["graphite_ip"]}')
         graphyte.init(
             config.hermes["graphite_ip"],
             config.hermes["graphite_port"],
@@ -174,9 +174,9 @@ if __name__ == "__main__":
 
     logger.info(f"Dispatching folder: {config.hermes['outgoing_folder']}")
 
-    global q
-    q = Queue(connection=Redis())
+    _q = Queue(connection=Redis())
 
+    # probably not needed to be a global variable, [joshy, 7.12.2020]
     global main_loop
     main_loop = helper.RepeatedTimer(
         config.hermes["dispatcher_scan_interval"], dispatch, exit_dispatcher, {}
@@ -188,5 +188,5 @@ if __name__ == "__main__":
     # Start the asyncio event loop for asynchronous function calls
     helper.loop.run_forever()
 
-    monitor.send_event(monitor.h_events.SHUTDOWN, monitor.severity.INFO)
+    _monitor.send_event(Hermes_Event.SHUTDOWN, Severity.INFO)
     logging.info("Going down now")

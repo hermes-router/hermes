@@ -3,9 +3,8 @@ webgui.py
 =========
 The web-based graphical user interface of Hermes.
 """
+from common.events import Hermes_Event, Severity, WebGui_Event
 import uvicorn
-import base64
-import binascii
 import sys
 import shutil
 import json
@@ -21,24 +20,21 @@ from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
-from starlette.responses import HTMLResponse
 from starlette.responses import PlainTextResponse
 from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
 from starlette.templating import Jinja2Templates
 from starlette.authentication import requires
 from starlette.authentication import (
-    AuthenticationBackend, AuthenticationError, SimpleUser, 
-    UnauthenticatedUser, AuthCredentials
+    AuthenticationBackend, SimpleUser, AuthCredentials
 )
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.config import Config
-from starlette.datastructures import URL, Secret
+from starlette.datastructures import Secret
 from starlette.routing import Route, Router
 
 # App-specific includes
-import common.helper as helper
 import common.config as config
 import common.monitor as monitor
 import common.version as version
@@ -65,6 +61,7 @@ daiquiri.setup(
 )
 logger = daiquiri.getLogger("router")
 
+_monitor = None
 
 class ExtendedUser(SimpleUser):
     def __init__(self, username: str, is_admin: False) -> None:
@@ -251,7 +248,7 @@ async def add_rule(request):
         return PlainTextResponse('ERROR: Unable to write configuration. Try again.')
 
     logger.info(f'Created rule {newrule}')
-    monitor.send_webgui_event(monitor.w_events.RULE_CREATE, request.user.display_name, newrule)    
+    _monitor.send_webgui_event(WebGui_Event.RULE_CREATE, request.user.display_name, newrule)    
     return RedirectResponse(url='/rules/edit/'+newrule, status_code=303)  
 
 
@@ -300,7 +297,7 @@ async def rules_edit_post(request):
         return PlainTextResponse('ERROR: Unable to write configuration. Try again.')
 
     logger.info(f'Edited rule {editrule}')
-    monitor.send_webgui_event(monitor.w_events.RULE_EDIT, request.user.display_name, editrule)    
+    _monitor.send_webgui_event(WebGui_Event.RULE_EDIT, request.user.display_name, editrule)    
     return RedirectResponse(url='/rules', status_code=303)   
 
 
@@ -324,7 +321,7 @@ async def rules_delete_post(request):
         return PlainTextResponse('ERROR: Unable to write configuration. Try again.')
     
     logger.info(f'Deleted rule {deleterule}')    
-    monitor.send_webgui_event(monitor.w_events.RULE_DELETE, request.user.display_name, deleterule)    
+    _monitor.send_webgui_event(WebGui_Event.RULE_DELETE, request.user.display_name, deleterule)    
     return RedirectResponse(url='/rules', status_code=303)   
 
 
@@ -397,7 +394,7 @@ async def add_target(request):
         return PlainTextResponse('ERROR: Unable to write configuration. Try again.')
 
     logger.info(f'Created target {newtarget}')
-    monitor.send_webgui_event(monitor.w_events.TARGET_CREATE, request.user.display_name, newtarget)    
+    _monitor.send_webgui_event(WebGui_Event.TARGET_CREATE, request.user.display_name, newtarget)    
     return RedirectResponse(url='/targets/edit/'+newtarget, status_code=303)  
 
 
@@ -448,7 +445,7 @@ async def targes_edit_post(request):
         return PlainTextResponse('ERROR: Unable to write configuration. Try again.')
 
     logger.info(f'Edited target {edittarget}')
-    monitor.send_webgui_event(monitor.w_events.TARGET_EDIT, request.user.display_name, edittarget)    
+    _monitor.send_webgui_event(WebGui_Event.TARGET_EDIT, request.user.display_name, edittarget)    
     return RedirectResponse(url='/targets', status_code=303)   
 
 
@@ -472,7 +469,7 @@ async def targets_delete_post(request):
         return PlainTextResponse('ERROR: Unable to write configuration. Try again.')    
 
     logger.info(f'Deleted target {deletetarget}')
-    monitor.send_webgui_event(monitor.w_events.TARGET_DELETE, request.user.display_name, deletetarget)    
+    _monitor.send_webgui_event(WebGui_Event.TARGET_DELETE, request.user.display_name, deletetarget)    
     return RedirectResponse(url='/targets', status_code=303)   
 
 
@@ -557,7 +554,7 @@ async def add_new_user(request):
         return PlainTextResponse('ERROR: Unable to write user list. Try again.')    
 
     logger.info(f'Created user {newuser}')
-    monitor.send_webgui_event(monitor.w_events.USER_CREATE, request.user.display_name, newuser)    
+    _monitor.send_webgui_event(WebGui_Event.USER_CREATE, request.user.display_name, newuser)    
     return RedirectResponse(url='/users/edit/'+newuser, status_code=303)  
 
 
@@ -632,7 +629,7 @@ async def users_edit_post(request):
         return PlainTextResponse('ERROR: Unable to write user list. Try again.')    
 
     logger.info(f'Edited user {edituser}')
-    monitor.send_webgui_event(monitor.w_events.USER_EDIT, request.user.display_name, edituser)
+    _monitor.send_webgui_event(WebGui_Event.USER_EDIT, request.user.display_name, edituser)
     if "own_settings" in form:
         return RedirectResponse(url='/', status_code=303)   
     else:
@@ -659,7 +656,7 @@ async def users_delete_post(request):
         return PlainTextResponse('ERROR: Unable to write user list. Try again.')
 
     logger.info(f'Deleted user {deleteuser}')        
-    monitor.send_webgui_event(monitor.w_events.USER_DELETE, request.user.display_name, deleteuser)
+    _monitor.send_webgui_event(WebGui_Event.USER_DELETE, request.user.display_name, deleteuser)
     return RedirectResponse(url='/users', status_code=303)   
 
 
@@ -728,7 +725,7 @@ async def configuration_edit_post(request):
         return PlainTextResponse('Unable to write config file. Might be locked.')
 
     logger.info(f'Updates hermes configuration file.')     
-    monitor.send_webgui_event(monitor.w_events.CONFIG_EDIT, request.user.display_name, "")
+    _monitor.send_webgui_event(WebGui_Event.CONFIG_EDIT, request.user.display_name, "")
 
     return RedirectResponse(url='/configuration?edited=1', status_code=303)
 
@@ -763,7 +760,7 @@ async def login_post(request):
         if users.is_admin(form["username"])==True:
             request.session.update({"is_admin": "Jawohl"})
 
-        monitor.send_webgui_event(monitor.w_events.LOGIN, form["username"], "{admin}".format(admin="ADMIN" if users.is_admin(form["username"]) else ""))
+        _monitor.send_webgui_event(WebGui_Event.LOGIN, form["username"], "{admin}".format(admin="ADMIN" if users.is_admin(form["username"]) else ""))
 
         if users.needs_change_password(form["username"]):
             return RedirectResponse(url='/settings', status_code=303)
@@ -774,7 +771,7 @@ async def login_post(request):
             source_ip="UNKOWN IP"
         else:
             source_ip=request.client.host
-        monitor.send_webgui_event(monitor.w_events.LOGIN_FAIL, form["username"], source_ip)
+        _monitor.send_webgui_event(WebGui_Event.LOGIN_FAIL, form["username"], source_ip)
 
         template = "login.html"
         context = {"request": request, "invalid_password": 1, "hermes_version": version.hermes_version, "appliance_name": config.hermes.get('appliance_name','Hermes Router') }
@@ -784,7 +781,7 @@ async def login_post(request):
 @app.route('/logout')
 async def logout(request):
     """Logouts the users by clearing the session cookie."""    
-    monitor.send_webgui_event(monitor.w_events.LOGOUT, request.user.display_name, "")
+    _monitor.send_webgui_event(WebGui_Event.LOGOUT, request.user.display_name, "")
     request.session.clear()
     return RedirectResponse(url='/login')
 
@@ -859,7 +856,7 @@ async def control_services(request):
             await async_run(command)
 
     monitor_string="action: "+action+"; services: "+form.get('services','')
-    monitor.send_webgui_event(monitor.w_events.SERVICE_CONTROL, request.user.display_name, monitor_string)
+    _monitor.send_webgui_event(WebGui_Event.SERVICE_CONTROL, request.user.display_name, monitor_string)
     return JSONResponse("{ }")
 
 
@@ -934,8 +931,8 @@ if __name__ == "__main__":
         logger.info("Going down.")
         sys.exit(1)
 
-    monitor.configure('webgui','main',config.hermes['bookkeeper'])
-    monitor.send_event(monitor.h_events.BOOT,monitor.severity.INFO,f'PID = {os.getpid()}')    
+    _monitor = monitor.configure('webgui','main',config.hermes['bookkeeper'])
+    _monitor.send_event(Hermes_Event.BOOT,Severity.INFO,f'PID = {os.getpid()}')    
 
     try:
         tagslist.read_tagslist()
@@ -946,4 +943,4 @@ if __name__ == "__main__":
     uvicorn.run(app, host=WEBGUI_HOST, port=WEBGUI_PORT)
 
     # Process will exit here
-    monitor.send_event(monitor.h_events.SHUTDOWN,monitor.severity.INFO,'')    
+    _monitor.send_event(Hermes_Event.SHUTDOWN,Severity.INFO,'')    
