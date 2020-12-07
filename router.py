@@ -120,7 +120,7 @@ def runRouter(args):
     # Process all complete series
     for entry in sorted(completeSeries):
         try:
-            process_series(entry)
+            process_series(monitor, entry)
         except Exception:
             logger.exception(f'Problems while processing series {entry}')
             _monitor.send_series_event(Series_Event.ERROR, entry, 0, "", "Exception while processing")
