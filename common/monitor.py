@@ -44,7 +44,7 @@ class Monitor():
             logger.error(e)
 
 
-    def send_register_seriese(self, tags):
+    def send_register_series(self, tags):
         """Registers a received series on the bookkeeper. This should be called when a series has been 
         fully received and the DICOM tags have been parsed."""
         if not self.bookkeeper_address:
