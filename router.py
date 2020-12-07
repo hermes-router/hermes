@@ -130,7 +130,7 @@ def runRouter(args):
             return
 
     if error_files_found:
-        process_error_files()
+        process_error_files(_monitor)
 
 
 def exitRouter(args):

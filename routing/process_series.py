@@ -1,14 +1,13 @@
-import os
-from pathlib import Path
-import uuid
 import json
+import os
 import shutil
-import daiquiri
+import uuid
+from pathlib import Path
 
-# App-specific includes
 import common.config as config
 import common.rule_evaluation as rule_evaluation
-#import common.monitor as monitor
+import daiquiri
+from common.events import Hermes_Event, Severity
 
 logger = daiquiri.getLogger("process_series")
 
@@ -33,7 +32,7 @@ class FileLock:
             self.lockCreated=False
 
 
-def process_series(series_UID):
+def process_series(monitor, series_UID):
     """Processes the series with the given series UID from the incoming folder."""
     lock_file=Path(config.hermes['incoming_folder'] + '/' + str(series_UID) + '.lock')
 
@@ -46,7 +45,7 @@ def process_series(series_UID):
     except:
         # Can't create lock file, so something must be seriously wrong
         logger.error(f'Unable to create lock file {lock_file}')
-        #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to create lock file {lock_file}')
+        monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to create lock file {lock_file}')
         return
 
     logger.info(f'Processing series {series_UID}')
@@ -66,7 +65,7 @@ def process_series(series_UID):
     tagsMasterFile=Path(config.hermes['incoming_folder'] + '/' + fileList[0] + ".tags")
     if not tagsMasterFile.exists():
         logger.error(f'Missing file! {tagsMasterFile.name}')
-        #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Missing file {tagsMasterFile.name}')
+        monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Missing file {tagsMasterFile.name}')
         return
 
     try:
@@ -74,33 +73,33 @@ def process_series(series_UID):
             tagsList=json.load(json_file)
     except Exception:
         logger.exception(f"Invalid tag information of series {series_UID}")
-        #monitor.send_series_event(monitor.s_events.ERROR, entry, 0, "", "Invalid tag information")
-        #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Invalid tag for series {series_UID}")        
+        monitor.send_series_event(monitor.s_events.ERROR, entry, 0, "", "Invalid tag information")
+        monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Invalid tag for series {series_UID}")        
         return
 
-    #monitor.send_register_series(tagsList)
-    #monitor.send_series_event(monitor.s_events.REGISTERED, series_UID, len(fileList), "", "")
+    monitor.send_register_series(tagsList)
+    monitor.send_series_event(monitor.s_events.REGISTERED, series_UID, len(fileList), "", "")
 
     # Now test the routing rules and decide to which targets the series should be sent to
-    transfer_targets = get_routing_targets(tagsList)
+    transfer_targets = get_routing_targets(monitor, tagsList)
 
     if len(transfer_targets)==0:
         # If no routing rule has triggered, discard the series
-        push_series_discard(fileList,series_UID)
+        push_series_discard(monitor, fileList,series_UID)
     else:
         # Otherwise, push the series to a different outgoing folder for every target
-        push_series_outgoing(fileList,series_UID,transfer_targets)
+        push_series_outgoing(monitor, fileList,series_UID,transfer_targets)
 
     try:
         lock.free()
     except:
         # Can't delete lock file, so something must be seriously wrong
         logger.error(f'Unable to remove lock file {lock_file}')
-        #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to remove lock file {lock_file}')
+        monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to remove lock file {lock_file}')
         return
 
 
-def get_routing_targets(tagList):
+def get_routing_targets(monitor, tagList):
     """Evaluates the routing rules and returns a list with the desired targets."""
     selected_targets = {}
 
@@ -117,7 +116,7 @@ def get_routing_targets(tagList):
         except Exception as e:
             logger.error(e)
             logger.error(f"Invalid rule found: {current_rule}")
-            #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Invalid rule: {current_rule}")
+            monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Invalid rule: {current_rule}")
             continue
 
     logger.info("Selected routing:")
@@ -125,7 +124,7 @@ def get_routing_targets(tagList):
     return selected_targets
 
 
-def push_series_discard(fileList,series_UID):
+def push_series_discard(monitor, fileList,series_UID):
     """Discards the series by moving all files into the "discard" folder, which is periodically cleared."""
     # Define the source and target folder. Use UUID as name for the target folder in the 
     # discard directory to avoid collisions
@@ -138,11 +137,11 @@ def push_series_discard(fileList,series_UID):
         os.mkdir(discard_path)
     except Exception:
         logger.exception(f'Unable to create outgoing folder {discard_path}')
-        #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to create discard folder {discard_path}')
+        monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to create discard folder {discard_path}')
         return
     if not Path(discard_path).exists():
         logger.error(f'Creating discard folder not possible {discard_path}')
-        #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Creating discard folder not possible {discard_path}')
+        monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Creating discard folder not possible {discard_path}')
         return
 
     # Create lock file in destination folder (to prevent the cleaner module to work on the folder). Note that 
@@ -152,8 +151,8 @@ def push_series_discard(fileList,series_UID):
         lock=FileLock(lock_file)
     except:
         # Can't create lock file, so something must be seriously wrong
-        logger.error(f'Unable to create lock file {lock_file}')
-        #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to create lock file in discard folder {lock_file}')
+        logger.error(f'Unable to create lock file {Path(discard_path + "/.lock")}')
+        monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to create lock file in discard folder {Path(discard_path + "/.lock")}')
         return
 
     #monitor.send_series_event(monitor.s_events.DISCARD, series_UID, len(fileList), "", "")
@@ -166,20 +165,20 @@ def push_series_discard(fileList,series_UID):
             logger.exception(f'Problem while discarding file {entry}')
             logger.exception(f'Source folder {source_folder}')
             logger.exception(f'Target folder {discard_folder}')
-            #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Problem during discarding file {entry}')
+            monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Problem during discarding file {entry}')
 
-    #monitor.send_series_event(monitor.s_events.MOVE, series_UID, len(fileList), discard_path, "")
+    monitor.send_series_event(monitor.s_events.MOVE, series_UID, len(fileList), discard_path, "")
 
     try:
         lock.free()
     except:
         # Can't delete lock file, so something must be seriously wrong
         logger.error(f'Unable to remove lock file {lock_file}')
-        #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to remove lock file {lock_file}')
+        monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to remove lock file {lock_file}')
         return
 
 
-def push_series_outgoing(fileList,series_UID,transfer_targets):
+def push_series_outgoing(monitor, fileList,series_UID,transfer_targets):
     """Move the DICOM files of the series to a separate subfolder for each target in the outgoing folder."""
     source_folder=config.hermes['incoming_folder'] + '/'
 
@@ -192,7 +191,7 @@ def push_series_outgoing(fileList,series_UID,transfer_targets):
 
         if not target in config.hermes["targets"]:
             logger.error(f"Invalid target selected {target}")
-            #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Invalid target selected {target}")
+            monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Invalid target selected {target}")
             continue
 
         # Determine if the files should be copied or moved. For the last
@@ -208,12 +207,12 @@ def push_series_outgoing(fileList,series_UID,transfer_targets):
             os.mkdir(folder_name)
         except Exception:
             logger.exception(f'Unable to create outgoing folder {folder_name}')
-            #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to create outgoing folder {folder_name}')
+            monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to create outgoing folder {folder_name}')
             return
 
         if not Path(folder_name).exists():
             logger.error(f'Creating folder not possible {folder_name}')
-            #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Creating folder not possible {folder_name}')
+            monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Creating folder not possible {folder_name}')
             return
 
         try:
@@ -221,8 +220,8 @@ def push_series_outgoing(fileList,series_UID,transfer_targets):
             lock=FileLock(lock_file)
         except:
             # Can't create lock file, so something must be seriously wrong
-            logger.error(f'Unable to create lock file {lock_file}')
-            #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to create lock file {lock_file}')
+            logger.error(f'Unable to create lock file {Path(folder_name + "/.lock")}')
+            monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to create lock file {Path(folder_name + "/.lock")}')
             return
 
         # Generate target file target.json
@@ -241,10 +240,10 @@ def push_series_outgoing(fileList,series_UID,transfer_targets):
                 json.dump(target_json, target_file)
         except:
             logger.error(f"Unable to create target file {target_filename}")
-            #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Unable to create target file {target_filename}")
+            monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Unable to create target file {target_filename}")
             continue
 
-        #monitor.send_series_event(monitor.s_events.ROUTE, series_UID, len(fileList), target, transfer_targets[target])
+        monitor.send_series_event(monitor.s_events.ROUTE, series_UID, len(fileList), target, transfer_targets[target])
 
         if move_operation:
             operation=shutil.move
@@ -259,20 +258,20 @@ def push_series_outgoing(fileList,series_UID,transfer_targets):
                 logger.exception(f'Problem while pushing file to outgoing {entry}')
                 logger.exception(f'Source folder {source_folder}')
                 logger.exception(f'Target folder {target_folder}')
-                #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Problem while pushing file to outgoing {entry}')
+                monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Problem while pushing file to outgoing {entry}')
 
-        #monitor.send_series_event(monitor.s_events.MOVE, series_UID, len(fileList), folder_name, "")
+        monitor.send_series_event(monitor.s_events.MOVE, series_UID, len(fileList), folder_name, "")
 
         try:
             lock.free()
         except:
             # Can't delete lock file, so something must be seriously wrong
             logger.error(f'Unable to remove lock file {lock_file}')
-            #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to remove lock file {lock_file}')
+            monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to remove lock file {lock_file}')
             return
 
 
-def process_error_files():
+def process_error_files(monitor):
     """
     Looks for error files, moves these files and the corresponding DICOM files to the error folder, 
     and sends an alert to the bookkeeper instance.
@@ -304,6 +303,6 @@ def process_error_files():
 
             lock.free()
 
-    #if error_files_found > 0:
-        #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Error parsing {error_files_found} incoming files')
+    if error_files_found > 0:
+        monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Error parsing {error_files_found} incoming files')
     return
