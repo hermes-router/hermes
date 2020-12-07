@@ -7,7 +7,7 @@ from pathlib import Path
 import common.config as config
 import common.rule_evaluation as rule_evaluation
 import daiquiri
-from common.events import Hermes_Event, Severity
+from common.events import Hermes_Event, Series_Event, Severity
 
 logger = daiquiri.getLogger("process_series")
 
@@ -73,12 +73,12 @@ def process_series(monitor, series_UID):
             tagsList=json.load(json_file)
     except Exception:
         logger.exception(f"Invalid tag information of series {series_UID}")
-        monitor.send_series_event(monitor.s_events.ERROR, entry, 0, "", "Invalid tag information")
+        monitor.send_series_event(Series_Event.ERROR, entry, 0, "", "Invalid tag information")
         monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Invalid tag for series {series_UID}")        
         return
 
     monitor.send_register_series(tagsList)
-    monitor.send_series_event(monitor.s_events.REGISTERED, series_UID, len(fileList), "", "")
+    monitor.send_series_event(Series_Event.REGISTERED, series_UID, len(fileList), "", "")
 
     # Now test the routing rules and decide to which targets the series should be sent to
     transfer_targets = get_routing_targets(monitor, tagsList)
@@ -155,7 +155,7 @@ def push_series_discard(monitor, fileList,series_UID):
         monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Unable to create lock file in discard folder {Path(discard_path + "/.lock")}')
         return
 
-    #monitor.send_series_event(monitor.s_events.DISCARD, series_UID, len(fileList), "", "")
+    monitor.send_series_event(Series_Event.DISCARD, series_UID, len(fileList), "", "")
 
     for entry in fileList:
         try:
@@ -167,7 +167,7 @@ def push_series_discard(monitor, fileList,series_UID):
             logger.exception(f'Target folder {discard_folder}')
             monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Problem during discarding file {entry}')
 
-    monitor.send_series_event(monitor.s_events.MOVE, series_UID, len(fileList), discard_path, "")
+    monitor.send_series_event(Series_Event.MOVE, series_UID, len(fileList), discard_path, "")
 
     try:
         lock.free()
@@ -243,7 +243,7 @@ def push_series_outgoing(monitor, fileList,series_UID,transfer_targets):
             monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f"Unable to create target file {target_filename}")
             continue
 
-        monitor.send_series_event(monitor.s_events.ROUTE, series_UID, len(fileList), target, transfer_targets[target])
+        monitor.send_series_event(Series_Event.ROUTE, series_UID, len(fileList), target, transfer_targets[target])
 
         if move_operation:
             operation=shutil.move
@@ -260,7 +260,7 @@ def push_series_outgoing(monitor, fileList,series_UID,transfer_targets):
                 logger.exception(f'Target folder {target_folder}')
                 monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Problem while pushing file to outgoing {entry}')
 
-        monitor.send_series_event(monitor.s_events.MOVE, series_UID, len(fileList), folder_name, "")
+        monitor.send_series_event(Series_Event.MOVE, series_UID, len(fileList), folder_name, "")
 
         try:
             lock.free()
