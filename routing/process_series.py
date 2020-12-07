@@ -304,6 +304,6 @@ def process_error_files():
 
             lock.free()
 
-    if error_files_found > 0:
+    #if error_files_found > 0:
         #monitor.send_event(Hermes_Event.PROCESSING, Severity.ERROR, f'Error parsing {error_files_found} incoming files')
     return
