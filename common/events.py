@@ -1,6 +1,4 @@
-from enum import Enum
-
-class Hermes_Event(Enum):
+class Hermes_Event:
     """Event types for general Hermes monitoring."""
     UNKNOWN          = "UNKNOWN"
     BOOT             = "BOOT"
@@ -10,7 +8,7 @@ class Hermes_Event(Enum):
     PROCESSING       = "PROCESSING"
 
 
-class WebGui_Event(Enum):
+class WebGui_Event:
     """Event types for monitoring the webgui activity."""
     UNKNOWN          = "UNKNOWN"
     LOGIN            = "LOGIN"
@@ -29,7 +27,7 @@ class WebGui_Event(Enum):
     CONFIG_EDIT      = "CONFIG_EDIT"
 
 
-class Series_Event(Enum):
+class Series_Event:
     """Event types for monitoring everything related to one specific series."""
     UNKNOWN          = "UNKNOWN"
     REGISTERED       = "REGISTERED"
@@ -42,7 +40,7 @@ class Series_Event(Enum):
     SUSPEND          = "SUSPEND"
 
 
-class Severity(Enum):
+class Severity:
     """Severity level associated to the Hermes events."""
     INFO             = 0
     WARNING          = 1
