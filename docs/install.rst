@@ -8,7 +8,7 @@ It is recommended to install Hermes on a Linux machine running Ubuntu Server 18.
 Installing Hermes
 -----------------
 
-After finishing the Ubuntu installation procedure, the Offis DICOM toolkit (DCMTK) and gcc compiler need to be installed. A user called "hermes" should be created (the adduser command will ask for a password), and the Hermes installation file should be cloned using the shown Git command. By default, Hermes should be installed into the home directory of the user hermes. 
+After finishing the Ubuntu installation procedure, the Offis DICOM toolkit (DCMTK), Redis and gcc compiler need to be installed. A user called "hermes" should be created (the adduser command will ask for a password), and the Hermes installation file should be cloned using the shown Git command. By default, Hermes should be installed into the home directory of the user hermes. 
 
 Afterwards, the installation script should be executed. This will install the required Python runtime environment (Python 3.6 or higher) and create configuration files from the templates that are shipped with Hermes. Finally, the included ".service" files for running the Hermes modules as daemons need to be copied to the systemd folder and enabled via the "systemctl enable" command.
 
@@ -34,6 +34,19 @@ You can perform these steps by copying the commands listed below into a bash she
     sudo systemctl enable hermes_receiver.service
     sudo systemctl enable hermes_router.service
     sudo systemctl enable hermes_ui.service
+
+
+Installing dispatcher workers
+-----------------
+All the dispatch jobs are put in to queue backed by Redis. Of the queue worker are picking up the jobs and dispatching series to the destination.
+This allows to scale the router if it is necessary to distribute a lot of series. To support more destinations simple create more workes. This can be done 
+with systemd.
+
+First enable the worker service and then start one worker
+
+::
+    sudo systemctl enable hermes_dispatcher_worker@1.service
+    sudo systemctl start hermes_dispatcher_worker@1
 
 
 Creating data storage
