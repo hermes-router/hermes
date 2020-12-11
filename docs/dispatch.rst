@@ -9,13 +9,6 @@ dispatch.process\_dcmsend\_result
    :undoc-members:
    :show-inheritance:
 
-dispatch.retry
---------------
-
-.. automodule:: dispatch.retry
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 dispatch.send
 -------------
