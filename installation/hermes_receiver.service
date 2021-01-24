@@ -1,5 +1,5 @@
 [Unit]
-Description=Hermes Receier
+Description=Hermes Receiver
 Documentation=https://hermes-router.github.io/
 After=network.target
 Requires=network.target
