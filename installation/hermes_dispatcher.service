@@ -1,5 +1,5 @@
 [Unit]
-Description=Hermes Disatcher
+Description=Hermes Dispatcher
 Documentation=https://hermes-router.github.io/
 After=network.target
 Requires=network.target
