@@ -12,9 +12,9 @@ copyright = '2019, Kai Tobias Block, Joshy Cyriac'
 author = 'Kai Tobias Block, Joshy Cyriac'
 
 # The short X.Y version
-version = 'Version 0.1a'
+version = 'Version 0.1d'
 # The full version, including alpha/beta/rc tags
-release = '0.1a'
+release = '0.1d'
 
 
 # -- General configuration ---------------------------------------------------
