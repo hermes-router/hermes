@@ -1,1 +1,1 @@
-hermes_version = "0.1d"
+hermes_version = "0.1e"
