@@ -1,6 +1,10 @@
 import json
 from pathlib import Path
 
+import daiquiri
+
+logger = daiquiri.getLogger("dispatcher")
+
 
 def is_ready_for_sending(folder):
     """Checks if a case in the outgoing folder is ready for sending by the dispatcher.
@@ -34,11 +38,16 @@ def is_target_json_valid(folder):
     keys are target_ip, target_port and target_aet_target.
     """
     path = Path(folder) / "target.json"
-    if not path.exists():
+    if not path.exists() or path.stat().st_size <= 0:
         return None
 
     with open(path, "r") as f:
-        target = json.load(f)
+        try:
+            target = json.load(f)
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing json in folder: {folder}")
+            logger.error(e)
+            return None
 
     if not all(
         [key in target for key in ["target_ip", "target_port", "target_aet_target"]]
