@@ -1,12 +1,11 @@
 # Hermes DICOM Router
 
-**Important:** The project has been renamed to mercure and is currently undergoing significant development work towards version 0.2. Make sure to checkout only the branch *stable-v0.1* for a working version. All ongoing development work has been moved to https://github.com/mercure-imaging/mercure
+| **Important:** Development of the Hermes DICOM router has been discontinued. Please take a look at the successor project "mercure DICOM Orchestrator": https://github.com/mercure-imaging/mercure |
+| :--- |
 
 A flexible DICOM routing solution based on DCMTK toolkit. It consists of multiple separate modules / 
 applications that handle different steps of the routing procedure.
 
-Installation instructions and usage information can be found on the project homepage:
-https://hermes-router.github.io
 
 ## Receiver
 The receiver listens on a tcp port for incoming DICOM files. Received files are run through
